@@ -51,27 +51,24 @@ function aggregateReturnType(
     case "COUNT_IF":
     case "APPROX_COUNT_DISTINCT":
       return dataType("int64", false);
+    // SUM/SUM_IF: nullable because empty group returns NULL
     case "SUM":
-      if (argType && isNumeric(argType.scalar)) {
-        const s = argType.scalar === "int32" ? "int64" : argType.scalar;
-        return dataType(s, argType.nullable);
-      }
-      return dataType("double", true);
     case "SUM_IF":
       if (argType && isNumeric(argType.scalar)) {
         const s = argType.scalar === "int32" ? "int64" : argType.scalar;
-        return dataType(s, argType.nullable);
+        return dataType(s, true);
       }
       return dataType("double", true);
     case "AVG":
     case "AVG_IF":
       return dataType("double", true);
+    // MIN/MAX/FIRST/LAST: nullable because empty group returns NULL
     case "MIN":
     case "MAX":
     case "FIRST":
     case "LAST":
     case "ANY_VALUE":
-      return argType ?? dataType("unknown", true);
+      return dataType(argType?.scalar ?? "unknown", true);
     case "COLLECT_LIST":
     case "COLLECT_SET":
       return dataType("json", false);
@@ -369,7 +366,7 @@ class TypeChecker {
       case "NullLiteral":
         return { ...node, dataType: dataType("null", true) };
       case "Star":
-        return node;
+        return { ...node, dataType: dataType("int64", false) };
       case "ColumnRef":
         return this.inferColumnRef(node);
       case "BinaryExpr":

@@ -347,8 +347,17 @@ class Parser {
   unary(): Expr {
     const start = this.current();
     if (this.match("MINUS")) {
-      const operand = this.unary();
-      return { kind: "UnaryExpr", op: "-", operand, loc: this.loc(start) };
+      if (this.depth >= MAX_DEPTH) {
+        this.error("Maximum expression nesting depth exceeded");
+        return { kind: "NullLiteral", loc: this.loc(start) };
+      }
+      this.depth++;
+      try {
+        const operand = this.unary();
+        return { kind: "UnaryExpr", op: "-", operand, loc: this.loc(start) };
+      } finally {
+        this.depth--;
+      }
     }
     return this.primary();
   }
@@ -398,7 +407,9 @@ class Parser {
       return { kind: "Star", loc: this.loc(tok) };
     }
 
-    // Keywords that can also be aggregate names: FIRST(...), LAST(...)
+    // FIRST and LAST are lexer keywords (for NULLS FIRST/LAST in ORDER BY),
+    // but also valid aggregate function names. When followed by '(', treat as function call.
+    // This is safe because NULLS FIRST/LAST never appears before '(' in the grammar.
     if ((this.check("FIRST") || this.check("LAST")) && this.lookAhead(1) === "LPAREN") {
       const kwTok = this.advance();
       return this.functionCallExpr(kwTok.text.toUpperCase(), kwTok);

@@ -649,8 +649,16 @@ describe("parse", () => {
       expect(result.errors[0].message).toContain("Unterminated quoted");
     });
 
-    it("deeply nested expression hits depth limit", () => {
+    it("deeply nested parentheses hits depth limit", () => {
       const deep = "(".repeat(200) + "1" + ")".repeat(200);
+      const result = parse(deep);
+      expect(result.errors.length).toBeGreaterThan(0);
+      expect(result.errors[0].message).toContain("depth");
+    });
+
+    it("deeply nested unary minus hits depth limit", () => {
+      // Use "- (" to avoid "--" being parsed as a comment
+      const deep = "- (".repeat(200) + "1" + ")".repeat(200);
       const result = parse(deep);
       expect(result.errors.length).toBeGreaterThan(0);
       expect(result.errors[0].message).toContain("depth");

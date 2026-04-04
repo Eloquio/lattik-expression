@@ -109,9 +109,12 @@ const TYPE_TOKEN_MAP: Partial<Record<TokenKind, ScalarTypeKind>> = {
 // Parser
 // ---------------------------------------------------------------------------
 
+const MAX_DEPTH = 128;
+
 class Parser {
   pos = 0;
   errors: ParseError[] = [];
+  private depth = 0;
 
   constructor(private tokens: Token[]) {}
 
@@ -169,14 +172,30 @@ class Parser {
   // -- grammar ---------------------------------------------------------------
 
   parseExpr(): Expr {
-    return this.orExpr();
+    if (this.depth >= MAX_DEPTH) {
+      this.error("Maximum expression nesting depth exceeded");
+      const tok = this.current();
+      return { kind: "NullLiteral", loc: this.loc(tok) };
+    }
+    this.depth++;
+    try {
+      return this.orExpr();
+    } finally {
+      this.depth--;
+    }
   }
 
   orExpr(): Expr {
     let left = this.andExpr();
     while (this.match("OR")) {
       const right = this.andExpr();
-      left = { kind: "BinaryExpr", op: "OR", left, right };
+      const loc: Loc = {
+        startLine: left.loc?.startLine ?? 1,
+        startCol: left.loc?.startCol ?? 1,
+        stopLine: right.loc?.stopLine ?? 1,
+        stopCol: right.loc?.stopCol ?? 1,
+      };
+      left = { kind: "BinaryExpr", op: "OR", left, right, loc };
     }
     return left;
   }
@@ -185,7 +204,13 @@ class Parser {
     let left = this.notExpr();
     while (this.match("AND")) {
       const right = this.notExpr();
-      left = { kind: "BinaryExpr", op: "AND", left, right };
+      const loc: Loc = {
+        startLine: left.loc?.startLine ?? 1,
+        startCol: left.loc?.startCol ?? 1,
+        stopLine: right.loc?.stopLine ?? 1,
+        stopCol: right.loc?.stopCol ?? 1,
+      };
+      left = { kind: "BinaryExpr", op: "AND", left, right, loc };
     }
     return left;
   }
@@ -200,13 +225,14 @@ class Parser {
   }
 
   comparison(): Expr {
+    const startTok = this.current();
     const left = this.addition();
 
     // IS [NOT] NULL
     if (this.match("IS")) {
       const negated = !!this.match("NOT");
       this.expect("NULL");
-      return { kind: "IsNullExpr", expr: left, negated };
+      return { kind: "IsNullExpr", expr: left, negated, loc: this.loc(startTok) };
     }
 
     // [NOT] BETWEEN ... AND ...
@@ -216,7 +242,7 @@ class Parser {
       const low = this.addition();
       this.expect("AND");
       const high = this.addition();
-      return { kind: "BetweenExpr", expr: left, low, high, negated };
+      return { kind: "BetweenExpr", expr: left, low, high, negated, loc: this.loc(startTok) };
     }
 
     // [NOT] IN (...)
@@ -226,7 +252,7 @@ class Parser {
       this.expect("LPAREN");
       const values = this.exprList();
       this.expect("RPAREN");
-      return { kind: "InExpr", expr: left, values, negated };
+      return { kind: "InExpr", expr: left, values, negated, loc: this.loc(startTok) };
     }
 
     // [NOT] LIKE
@@ -234,14 +260,20 @@ class Parser {
       const negated = !!this.match("NOT");
       this.expect("LIKE");
       const pattern = this.addition();
-      return { kind: "LikeExpr", expr: left, pattern, negated };
+      return { kind: "LikeExpr", expr: left, pattern, negated, loc: this.loc(startTok) };
     }
 
     // Comparison operators
     const compOp = this.matchCompOp();
     if (compOp) {
       const right = this.addition();
-      return { kind: "BinaryExpr", op: compOp, left, right };
+      const loc: Loc = {
+        startLine: left.loc?.startLine ?? 1,
+        startCol: left.loc?.startCol ?? 1,
+        stopLine: right.loc?.stopLine ?? 1,
+        stopCol: right.loc?.stopCol ?? 1,
+      };
+      return { kind: "BinaryExpr", op: compOp, left, right, loc };
     }
 
     return left;
@@ -283,7 +315,13 @@ class Parser {
       const op: BinaryOp =
         tok.kind === "PLUS" ? "+" : tok.kind === "MINUS" ? "-" : "||";
       const right = this.multiply();
-      left = { kind: "BinaryExpr", op, left, right };
+      const loc: Loc = {
+        startLine: left.loc?.startLine ?? 1,
+        startCol: left.loc?.startCol ?? 1,
+        stopLine: right.loc?.stopLine ?? 1,
+        stopCol: right.loc?.stopCol ?? 1,
+      };
+      left = { kind: "BinaryExpr", op, left, right, loc };
     }
     return left;
   }
@@ -295,7 +333,13 @@ class Parser {
       const op: BinaryOp =
         tok.kind === "STAR" ? "*" : tok.kind === "SLASH" ? "/" : "%";
       const right = this.unary();
-      left = { kind: "BinaryExpr", op, left, right };
+      const loc: Loc = {
+        startLine: left.loc?.startLine ?? 1,
+        startCol: left.loc?.startCol ?? 1,
+        stopLine: right.loc?.stopLine ?? 1,
+        stopCol: right.loc?.stopCol ?? 1,
+      };
+      left = { kind: "BinaryExpr", op, left, right, loc };
     }
     return left;
   }
@@ -352,6 +396,12 @@ class Parser {
     // Bare * (for count(*) — should not appear at top level normally)
     if (this.match("STAR")) {
       return { kind: "Star", loc: this.loc(tok) };
+    }
+
+    // Keywords that can also be aggregate names: FIRST(...), LAST(...)
+    if ((this.check("FIRST") || this.check("LAST")) && this.lookAhead(1) === "LPAREN") {
+      const kwTok = this.advance();
+      return this.functionCallExpr(kwTok.text.toUpperCase(), kwTok);
     }
 
     // Identifier: could be column ref, table.column, or function call

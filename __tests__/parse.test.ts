@@ -414,6 +414,218 @@ describe("parse", () => {
     });
   });
 
+  describe("conditional aggregates", () => {
+    it("COUNT_IF(condition)", () => {
+      const e = parseOk("COUNT_IF(is_active)");
+      expect(e).toMatchObject({
+        kind: "AggregateCall",
+        name: "COUNT_IF",
+        args: [{ kind: "ColumnRef", column: "is_active" }],
+      });
+    });
+
+    it("SUM_IF(value, condition)", () => {
+      const e = parseOk("SUM_IF(amount, status = 'active')");
+      expect(e).toMatchObject({
+        kind: "AggregateCall",
+        name: "SUM_IF",
+        args: [
+          { kind: "ColumnRef", column: "amount" },
+          { kind: "BinaryExpr", op: "=" },
+        ],
+      });
+    });
+
+    it("AVG_IF(value, condition)", () => {
+      const e = parseOk("AVG_IF(price, quantity > 0)");
+      expect(e).toMatchObject({
+        kind: "AggregateCall",
+        name: "AVG_IF",
+      });
+    });
+  });
+
+  describe("spark aggregates", () => {
+    it("PERCENTILE(col, 0.5)", () => {
+      const e = parseOk("PERCENTILE(amount, 0.5)");
+      expect(e).toMatchObject({ kind: "AggregateCall", name: "PERCENTILE" });
+    });
+
+    it("APPROX_COUNT_DISTINCT(col)", () => {
+      const e = parseOk("APPROX_COUNT_DISTINCT(user_id)");
+      expect(e).toMatchObject({ kind: "AggregateCall", name: "APPROX_COUNT_DISTINCT" });
+    });
+
+    it("MIN(col)", () => {
+      const e = parseOk("MIN(amount)");
+      expect(e).toMatchObject({ kind: "AggregateCall", name: "MIN" });
+    });
+
+    it("MAX(col)", () => {
+      const e = parseOk("MAX(amount)");
+      expect(e).toMatchObject({ kind: "AggregateCall", name: "MAX" });
+    });
+
+    it("FIRST(col)", () => {
+      const e = parseOk("FIRST(name)");
+      expect(e).toMatchObject({ kind: "AggregateCall", name: "FIRST" });
+    });
+
+    it("LAST(col)", () => {
+      const e = parseOk("LAST(name)");
+      expect(e).toMatchObject({ kind: "AggregateCall", name: "LAST" });
+    });
+
+    it("COLLECT_LIST(col)", () => {
+      const e = parseOk("COLLECT_LIST(tag)");
+      expect(e).toMatchObject({ kind: "AggregateCall", name: "COLLECT_LIST" });
+    });
+
+    it("STDDEV(col)", () => {
+      const e = parseOk("STDDEV(amount)");
+      expect(e).toMatchObject({ kind: "AggregateCall", name: "STDDEV" });
+    });
+
+    it("VARIANCE(col)", () => {
+      const e = parseOk("VARIANCE(amount)");
+      expect(e).toMatchObject({ kind: "AggregateCall", name: "VARIANCE" });
+    });
+  });
+
+  describe("window function variants", () => {
+    it("RANK() OVER (ORDER BY score DESC)", () => {
+      const e = parseOk("RANK() OVER (ORDER BY score DESC)");
+      expect(e).toMatchObject({
+        kind: "WindowExpr",
+        func: { kind: "FunctionCall", name: "RANK" },
+        orderBy: [{ direction: "DESC" }],
+      });
+    });
+
+    it("DENSE_RANK() OVER (PARTITION BY category ORDER BY value)", () => {
+      const e = parseOk("DENSE_RANK() OVER (PARTITION BY category ORDER BY value)");
+      expect(e).toMatchObject({
+        kind: "WindowExpr",
+        func: { kind: "FunctionCall", name: "DENSE_RANK" },
+      });
+    });
+
+    it("NTILE(4) OVER (ORDER BY revenue)", () => {
+      const e = parseOk("NTILE(4) OVER (ORDER BY revenue)");
+      expect(e).toMatchObject({
+        kind: "WindowExpr",
+        func: { kind: "FunctionCall", name: "NTILE", args: [{ kind: "IntLiteral", value: "4" }] },
+      });
+    });
+
+    it("LAG(amount, 1) OVER (ORDER BY date)", () => {
+      const e = parseOk("LAG(amount, 1) OVER (ORDER BY date)");
+      expect(e).toMatchObject({
+        kind: "WindowExpr",
+        func: { kind: "FunctionCall", name: "LAG" },
+      });
+    });
+
+    it("LEAD(amount, 1, 0) OVER (ORDER BY date)", () => {
+      const e = parseOk("LEAD(amount, 1, 0) OVER (ORDER BY date)");
+      expect(e).toMatchObject({
+        kind: "WindowExpr",
+        func: { kind: "FunctionCall", name: "LEAD" },
+      });
+    });
+
+    it("window with N PRECEDING offset frame", () => {
+      const e = parseOk("SUM(amount) OVER (ORDER BY date ROWS 3 PRECEDING AND CURRENT ROW)");
+      expect(e).toMatchObject({
+        kind: "WindowExpr",
+        frame: {
+          type: "ROWS",
+          start: { kind: "PRECEDING", offset: { kind: "IntLiteral", value: "3" } },
+          end: { kind: "CURRENT_ROW" },
+        },
+      });
+    });
+
+    it("window with multiple ORDER BY columns", () => {
+      const e = parseOk("SUM(x) OVER (ORDER BY a ASC, b DESC NULLS FIRST)");
+      expect(e).toMatchObject({
+        kind: "WindowExpr",
+        orderBy: [
+          { direction: "ASC" },
+          { direction: "DESC", nulls: "FIRST" },
+        ],
+      });
+    });
+  });
+
+  describe("spark scalar functions", () => {
+    it("YEAR(date_col)", () => {
+      const e = parseOk("YEAR(created_at)");
+      expect(e).toMatchObject({ kind: "FunctionCall", name: "YEAR" });
+    });
+
+    it("DATE_ADD(date_col, 7)", () => {
+      const e = parseOk("DATE_ADD(created_at, 7)");
+      expect(e).toMatchObject({ kind: "FunctionCall", name: "DATE_ADD" });
+    });
+
+    it("REPLACE(str, old, new)", () => {
+      const e = parseOk("REPLACE(name, 'a', 'b')");
+      expect(e).toMatchObject({ kind: "FunctionCall", name: "REPLACE" });
+    });
+
+    it("GREATEST(a, b, c)", () => {
+      const e = parseOk("GREATEST(a, b, c)");
+      expect(e).toMatchObject({ kind: "FunctionCall", name: "GREATEST", args: [{}, {}, {}] });
+    });
+
+    it("MD5(value)", () => {
+      const e = parseOk("MD5(name)");
+      expect(e).toMatchObject({ kind: "FunctionCall", name: "MD5" });
+    });
+
+    it("NVL(nullable_col, default)", () => {
+      const e = parseOk("NVL(price, 0)");
+      expect(e).toMatchObject({ kind: "FunctionCall", name: "NVL" });
+    });
+
+    it("ROW_NUMBER() parsed as FunctionCall", () => {
+      const e = parseOk("ROW_NUMBER() OVER (ORDER BY id)");
+      expect(e).toMatchObject({
+        kind: "WindowExpr",
+        func: { kind: "FunctionCall", name: "ROW_NUMBER" },
+      });
+    });
+  });
+
+  describe("loc on nodes", () => {
+    it("BinaryExpr has loc", () => {
+      const e = parseOk("a + b");
+      expect(e.loc).toBeDefined();
+      expect(e.loc!.startLine).toBe(1);
+    });
+
+    it("IsNullExpr has loc", () => {
+      const e = parseOk("a IS NULL");
+      expect(e.loc).toBeDefined();
+    });
+
+    it("BetweenExpr has loc", () => {
+      const e = parseOk("a BETWEEN 1 AND 10");
+      expect(e.loc).toBeDefined();
+    });
+
+    it("InExpr has loc", () => {
+      const e = parseOk("a IN (1, 2)");
+      expect(e.loc).toBeDefined();
+    });
+
+    it("LikeExpr has loc", () => {
+      const e = parseOk("name LIKE '%foo%'");
+      expect(e.loc).toBeDefined();
+    });
+  });
+
   describe("errors", () => {
     it("unclosed parenthesis", () => {
       const result = parse("(a + b");
@@ -423,6 +635,25 @@ describe("parse", () => {
     it("unexpected token", () => {
       const result = parse("a +");
       expect(result.errors.length).toBeGreaterThan(0);
+    });
+
+    it("unterminated string literal", () => {
+      const result = parse("'unterminated");
+      expect(result.errors.length).toBeGreaterThan(0);
+      expect(result.errors[0].message).toContain("Unterminated string");
+    });
+
+    it("unterminated quoted identifier", () => {
+      const result = parse('"unterminated');
+      expect(result.errors.length).toBeGreaterThan(0);
+      expect(result.errors[0].message).toContain("Unterminated quoted");
+    });
+
+    it("deeply nested expression hits depth limit", () => {
+      const deep = "(".repeat(200) + "1" + ")".repeat(200);
+      const result = parse(deep);
+      expect(result.errors.length).toBeGreaterThan(0);
+      expect(result.errors[0].message).toContain("depth");
     });
   });
 });

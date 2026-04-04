@@ -264,4 +264,73 @@ describe("emitSql", () => {
       "SUM(amount) OVER (ORDER BY date ROWS UNBOUNDED PRECEDING AND CURRENT ROW)"
     );
   });
+
+  it("conditional aggregate COUNT_IF", () => {
+    const e: Expr = {
+      kind: "AggregateCall",
+      name: "COUNT_IF",
+      args: [{ kind: "ColumnRef", column: "is_active" }],
+    };
+    expect(emitSql(e)).toBe("COUNT_IF(is_active)");
+  });
+
+  it("conditional aggregate SUM_IF", () => {
+    const e: Expr = {
+      kind: "AggregateCall",
+      name: "SUM_IF",
+      args: [
+        { kind: "ColumnRef", column: "amount" },
+        { kind: "ColumnRef", column: "active" },
+      ],
+    };
+    expect(emitSql(e)).toBe("SUM_IF(amount, active)");
+  });
+
+  it("window with N PRECEDING frame", () => {
+    const e: Expr = {
+      kind: "WindowExpr",
+      func: {
+        kind: "AggregateCall",
+        name: "SUM",
+        args: [{ kind: "ColumnRef", column: "x" }],
+      },
+      partitionBy: [],
+      orderBy: [{ expr: { kind: "ColumnRef", column: "d" }, direction: "ASC" as const }],
+      frame: {
+        type: "ROWS",
+        start: { kind: "PRECEDING", offset: { kind: "IntLiteral", value: "3" } },
+        end: { kind: "CURRENT_ROW" },
+      },
+    };
+    expect(emitSql(e)).toBe("SUM(x) OVER (ORDER BY d ROWS 3 PRECEDING AND CURRENT ROW)");
+  });
+
+  it("window with ORDER BY DESC NULLS FIRST", () => {
+    const e: Expr = {
+      kind: "WindowExpr",
+      func: { kind: "FunctionCall", name: "ROW_NUMBER", args: [] },
+      partitionBy: [],
+      orderBy: [
+        { expr: { kind: "ColumnRef", column: "a" }, direction: "DESC" as const, nulls: "FIRST" as const },
+      ],
+    };
+    expect(emitSql(e)).toBe("ROW_NUMBER() OVER (ORDER BY a DESC NULLS FIRST)");
+  });
+
+  it("quotes SQL reserved keyword identifiers", () => {
+    const e: Expr = {
+      kind: "ColumnRef",
+      column: "select",
+    };
+    expect(emitSql(e)).toBe('"select"');
+  });
+
+  it("quotes table.column where column is keyword", () => {
+    const e: Expr = {
+      kind: "ColumnRef",
+      table: "t",
+      column: "order",
+    };
+    expect(emitSql(e)).toBe('t."order"');
+  });
 });

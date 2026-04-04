@@ -39,6 +39,17 @@ const PRECEDENCE: Record<BinaryOp, number> = {
 // Emitter
 // ---------------------------------------------------------------------------
 
+const SQL_KEYWORDS = new Set([
+  "SELECT", "FROM", "WHERE", "INSERT", "UPDATE", "DELETE", "CREATE", "DROP",
+  "ALTER", "TABLE", "INDEX", "VIEW", "DATABASE", "SCHEMA", "GRANT", "REVOKE",
+  "NULL", "TRUE", "FALSE", "AND", "OR", "NOT", "IN", "BETWEEN", "LIKE",
+  "IS", "AS", "ON", "JOIN", "LEFT", "RIGHT", "INNER", "OUTER", "CROSS",
+  "GROUP", "ORDER", "BY", "HAVING", "LIMIT", "OFFSET", "UNION", "ALL",
+  "DISTINCT", "CASE", "WHEN", "THEN", "ELSE", "END", "CAST", "EXISTS",
+  "ASC", "DESC", "OVER", "PARTITION", "ROWS", "RANGE", "UNBOUNDED",
+  "PRECEDING", "FOLLOWING", "CURRENT", "ROW", "FILTER",
+]);
+
 class SqlEmitter {
   constructor(private pretty: boolean) {}
 
@@ -167,15 +178,19 @@ class SqlEmitter {
       case "CURRENT_ROW":
         return "CURRENT ROW";
       case "PRECEDING":
-        return `${this.emit(bound.offset!)} PRECEDING`;
+        return `${bound.offset ? this.emit(bound.offset) : "1"} PRECEDING`;
       case "FOLLOWING":
-        return `${this.emit(bound.offset!)} FOLLOWING`;
+        return `${bound.offset ? this.emit(bound.offset) : "1"} FOLLOWING`;
+      default: {
+        const _exhaustive: never = bound.kind;
+        throw new Error(`Unknown frame bound kind: ${_exhaustive}`);
+      }
     }
   }
 
   private ident(name: string): string {
     // Quote if the identifier contains special characters or is a keyword
-    if (/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) {
+    if (/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name) && !SQL_KEYWORDS.has(name.toUpperCase())) {
       return name;
     }
     return `"${name}"`;

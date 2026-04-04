@@ -179,5 +179,199 @@ describe("check", () => {
       expect(result.errors).toEqual([]);
       expect(result.expr.dataType?.scalar).toBe("double");
     });
+
+    it("ROW_NUMBER returns int64", () => {
+      const result = checkExpr("ROW_NUMBER() OVER (ORDER BY amount)");
+      expect(result.errors).toEqual([]);
+      expect(result.expr.dataType?.scalar).toBe("int64");
+    });
+
+    it("RANK returns int32", () => {
+      const result = checkExpr("RANK() OVER (ORDER BY amount)");
+      expect(result.errors).toEqual([]);
+      expect(result.expr.dataType?.scalar).toBe("int32");
+    });
+
+    it("LAG returns argument type", () => {
+      const result = checkExpr("LAG(amount, 1) OVER (ORDER BY created_at)");
+      expect(result.errors).toEqual([]);
+      expect(result.expr.dataType?.scalar).toBe("double");
+    });
+
+    it("NTILE returns int32", () => {
+      const result = checkExpr("NTILE(4) OVER (ORDER BY amount)");
+      expect(result.errors).toEqual([]);
+      expect(result.expr.dataType?.scalar).toBe("int32");
+    });
+
+    it("CUME_DIST returns double", () => {
+      const result = checkExpr("CUME_DIST() OVER (ORDER BY amount)");
+      expect(result.errors).toEqual([]);
+      expect(result.expr.dataType?.scalar).toBe("double");
+    });
+  });
+
+  describe("conditional aggregates", () => {
+    it("COUNT_IF returns int64", () => {
+      const result = checkExpr("COUNT_IF(active)");
+      expect(result.errors).toEqual([]);
+      expect(result.expr.dataType).toEqual(dataType("int64", false));
+    });
+
+    it("COUNT_IF requires boolean argument", () => {
+      const result = checkExpr("COUNT_IF(amount)");
+      expect(result.errors.length).toBeGreaterThan(0);
+      expect(result.errors[0].code).toBe("TYPE_MISMATCH");
+    });
+
+    it("SUM_IF preserves int64 type", () => {
+      const result = checkExpr("SUM_IF(cost, active)");
+      expect(result.errors).toEqual([]);
+      expect(result.expr.dataType?.scalar).toBe("int64");
+    });
+
+    it("SUM_IF preserves double type", () => {
+      const result = checkExpr("SUM_IF(amount, active)");
+      expect(result.errors).toEqual([]);
+      expect(result.expr.dataType?.scalar).toBe("double");
+    });
+
+    it("SUM_IF requires boolean second arg", () => {
+      const result = checkExpr("SUM_IF(amount, cost)");
+      expect(result.errors.length).toBeGreaterThan(0);
+      expect(result.errors[0].code).toBe("TYPE_MISMATCH");
+    });
+
+    it("AVG_IF returns double", () => {
+      const result = checkExpr("AVG_IF(quantity, active)");
+      expect(result.errors).toEqual([]);
+      expect(result.expr.dataType?.scalar).toBe("double");
+    });
+
+    it("AVG_IF requires boolean second arg", () => {
+      const result = checkExpr("AVG_IF(amount, name)");
+      expect(result.errors.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe("spark aggregates", () => {
+    it("MIN passes through type", () => {
+      const result = checkExpr("MIN(amount)");
+      expect(result.errors).toEqual([]);
+      expect(result.expr.dataType?.scalar).toBe("double");
+    });
+
+    it("MAX passes through type", () => {
+      const result = checkExpr("MAX(quantity)");
+      expect(result.errors).toEqual([]);
+      expect(result.expr.dataType?.scalar).toBe("int32");
+    });
+
+    it("FIRST passes through type", () => {
+      const result = checkExpr("FIRST(name)");
+      expect(result.errors).toEqual([]);
+      expect(result.expr.dataType?.scalar).toBe("string");
+    });
+
+    it("COLLECT_LIST returns json", () => {
+      const result = checkExpr("COLLECT_LIST(name)");
+      expect(result.errors).toEqual([]);
+      expect(result.expr.dataType?.scalar).toBe("json");
+    });
+
+    it("STDDEV returns double", () => {
+      const result = checkExpr("STDDEV(amount)");
+      expect(result.errors).toEqual([]);
+      expect(result.expr.dataType?.scalar).toBe("double");
+    });
+
+    it("APPROX_COUNT_DISTINCT returns int64", () => {
+      const result = checkExpr("APPROX_COUNT_DISTINCT(user_id)");
+      expect(result.errors).toEqual([]);
+      expect(result.expr.dataType).toEqual(dataType("int64", false));
+    });
+
+    it("PERCENTILE returns double", () => {
+      const result = checkExpr("PERCENTILE(amount, 0.5)");
+      expect(result.errors).toEqual([]);
+      expect(result.expr.dataType?.scalar).toBe("double");
+    });
+  });
+
+  describe("spark scalar functions", () => {
+    it("YEAR returns int32", () => {
+      const result = checkExpr("YEAR(created_at)");
+      expect(result.errors).toEqual([]);
+      expect(result.expr.dataType?.scalar).toBe("int32");
+    });
+
+    it("DATE_ADD returns date", () => {
+      const result = checkExpr("DATE_ADD(created_at, 7)");
+      expect(result.errors).toEqual([]);
+      expect(result.expr.dataType?.scalar).toBe("date");
+    });
+
+    it("REPLACE returns string", () => {
+      const result = checkExpr("REPLACE(name, 'a', 'b')");
+      expect(result.errors).toEqual([]);
+      expect(result.expr.dataType?.scalar).toBe("string");
+    });
+
+    it("GREATEST returns promoted type", () => {
+      const result = checkExpr("GREATEST(quantity, cost)");
+      expect(result.errors).toEqual([]);
+      expect(result.expr.dataType?.scalar).toBe("int64");
+    });
+
+    it("NVL returns non-nullable", () => {
+      const result = checkExpr("NVL(price, 0)");
+      expect(result.errors).toEqual([]);
+      expect(result.expr.dataType?.nullable).toBe(false);
+    });
+
+    it("MD5 returns string", () => {
+      const result = checkExpr("MD5(name)");
+      expect(result.errors).toEqual([]);
+      expect(result.expr.dataType?.scalar).toBe("string");
+    });
+
+    it("SQRT returns double", () => {
+      const result = checkExpr("SQRT(amount)");
+      expect(result.errors).toEqual([]);
+      expect(result.expr.dataType?.scalar).toBe("double");
+    });
+
+    it("SIZE returns int32", () => {
+      const result = checkExpr("SIZE(name)");
+      expect(result.errors).toEqual([]);
+      expect(result.expr.dataType?.scalar).toBe("int32");
+    });
+  });
+
+  describe("unary minus validation", () => {
+    it("unary minus on number is ok", () => {
+      const result = checkExpr("-amount");
+      expect(result.errors).toEqual([]);
+      expect(result.expr.dataType?.scalar).toBe("double");
+    });
+
+    it("unary minus on string is error", () => {
+      const result = checkExpr("-name");
+      expect(result.errors.length).toBeGreaterThan(0);
+      expect(result.errors[0].code).toBe("TYPE_MISMATCH");
+    });
+  });
+
+  describe("filter clause validation", () => {
+    it("FILTER with boolean is ok", () => {
+      const result = checkExpr("SUM(amount) FILTER (WHERE active)");
+      expect(result.errors).toEqual([]);
+    });
+
+    it("FILTER with non-boolean is error", () => {
+      const result = checkExpr("SUM(amount) FILTER (WHERE quantity)");
+      expect(result.errors.length).toBeGreaterThan(0);
+      expect(result.errors[0].code).toBe("TYPE_MISMATCH");
+    });
   });
 });

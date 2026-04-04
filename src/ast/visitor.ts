@@ -160,5 +160,9 @@ function mapChildren(
             }
           : undefined,
       };
+    default: {
+      const _exhaustive: never = expr;
+      return _exhaustive;
+    }
   }
 }

@@ -58,6 +58,10 @@ function aggregateReturnType(
       }
       return dataType("double", true);
     case "SUM_IF":
+      if (argType && isNumeric(argType.scalar)) {
+        const s = argType.scalar === "int32" ? "int64" : argType.scalar;
+        return dataType(s, argType.nullable);
+      }
       return dataType("double", true);
     case "AVG":
     case "AVG_IF":
@@ -485,6 +489,14 @@ class TypeChecker {
 
   private inferUnary(node: Expr & { kind: "UnaryExpr" }): Expr {
     if (node.op === "-") {
+      const t = node.operand.dataType;
+      if (t && t.scalar !== "null" && t.scalar !== "unknown" && !isNumeric(t.scalar)) {
+        this.errors.push({
+          loc: node.loc,
+          code: "TYPE_MISMATCH",
+          message: `Cannot apply unary '-' to ${t.scalar}`,
+        });
+      }
       return { ...node, dataType: node.operand.dataType };
     }
     // NOT
@@ -553,6 +565,73 @@ class TypeChecker {
       node.args.length > 0 && node.args[0].kind !== "Star"
         ? node.args[0].dataType ?? null
         : null;
+
+    // Validate conditional aggregates
+    switch (node.name) {
+      case "COUNT_IF":
+        if (node.args.length !== 1) {
+          this.errors.push({
+            loc: node.loc,
+            code: "ARG_COUNT",
+            message: `COUNT_IF expects 1 argument, got ${node.args.length}`,
+          });
+        } else if (
+          argType &&
+          argType.scalar !== "boolean" &&
+          argType.scalar !== "null" &&
+          argType.scalar !== "unknown"
+        ) {
+          this.errors.push({
+            loc: node.loc,
+            code: "TYPE_MISMATCH",
+            message: `COUNT_IF argument should be boolean, got ${argType.scalar}`,
+          });
+        }
+        break;
+      case "SUM_IF":
+      case "AVG_IF": {
+        if (node.args.length !== 2) {
+          this.errors.push({
+            loc: node.loc,
+            code: "ARG_COUNT",
+            message: `${node.name} expects 2 arguments, got ${node.args.length}`,
+          });
+        } else {
+          const condType = node.args[1].dataType;
+          if (
+            condType &&
+            condType.scalar !== "boolean" &&
+            condType.scalar !== "null" &&
+            condType.scalar !== "unknown"
+          ) {
+            this.errors.push({
+              loc: node.loc,
+              code: "TYPE_MISMATCH",
+              message: `${node.name} condition argument should be boolean, got ${condType.scalar}`,
+            });
+          }
+        }
+        break;
+      }
+    }
+
+    // Validate filter clause is boolean
+    if (node.filter) {
+      const filterType = node.filter.dataType;
+      if (
+        filterType &&
+        filterType.scalar !== "boolean" &&
+        filterType.scalar !== "null" &&
+        filterType.scalar !== "unknown"
+      ) {
+        this.errors.push({
+          loc: node.filter.loc,
+          code: "TYPE_MISMATCH",
+          message: `FILTER clause must be boolean, got ${filterType.scalar}`,
+        });
+      }
+    }
+
     const dt = aggregateReturnType(node.name, argType);
     return { ...node, dataType: dt };
   }

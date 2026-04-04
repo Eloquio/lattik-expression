@@ -75,6 +75,62 @@ describe("roundtrip", () => {
       "SUM(amount) OVER (PARTITION BY user_id ORDER BY date)",
       "SUM(amount) OVER (PARTITION BY user_id ORDER BY date)",
     ],
+
+    // conditional aggregates
+    ["COUNT_IF(active)", "COUNT_IF(active)"],
+    ["SUM_IF(amount, active)", "SUM_IF(amount, active)"],
+    ["AVG_IF(price, quantity > 0)", "AVG_IF(price, quantity > 0)"],
+
+    // spark aggregates
+    ["MIN(amount)", "MIN(amount)"],
+    ["MAX(amount)", "MAX(amount)"],
+    ["FIRST(name)", "FIRST(name)"],
+    ["LAST(name)", "LAST(name)"],
+    ["COLLECT_LIST(tag)", "COLLECT_LIST(tag)"],
+    ["STDDEV(amount)", "STDDEV(amount)"],
+    ["APPROX_COUNT_DISTINCT(user_id)", "APPROX_COUNT_DISTINCT(user_id)"],
+    ["PERCENTILE(amount, 0.5)", "PERCENTILE(amount, 0.5)"],
+
+    // window function variants
+    ["RANK() OVER (ORDER BY score DESC)", "RANK() OVER (ORDER BY score DESC)"],
+    ["DENSE_RANK() OVER (ORDER BY value)", "DENSE_RANK() OVER (ORDER BY value)"],
+    ["NTILE(4) OVER (ORDER BY revenue)", "NTILE(4) OVER (ORDER BY revenue)"],
+    ["LAG(amount, 1) OVER (ORDER BY date)", "LAG(amount, 1) OVER (ORDER BY date)"],
+    ["LEAD(amount, 1, 0) OVER (ORDER BY date)", "LEAD(amount, 1, 0) OVER (ORDER BY date)"],
+    [
+      "ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY date)",
+      "ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY date)",
+    ],
+    [
+      "SUM(x) OVER (ORDER BY date ROWS 3 PRECEDING AND CURRENT ROW)",
+      "SUM(x) OVER (ORDER BY date ROWS 3 PRECEDING AND CURRENT ROW)",
+    ],
+    [
+      "SUM(x) OVER (ORDER BY date ROWS UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)",
+      "SUM(x) OVER (ORDER BY date ROWS UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)",
+    ],
+
+    // aggregate with FILTER
+    [
+      "SUM(amount) FILTER (WHERE active)",
+      "SUM(amount) FILTER (WHERE active)",
+    ],
+
+    // spark scalar functions
+    ["YEAR(created_at)", "YEAR(created_at)"],
+    ["DATE_ADD(d, 7)", "DATE_ADD(d, 7)"],
+    ["REPLACE(name, 'a', 'b')", "REPLACE(name, 'a', 'b')"],
+    ["NVL(price, 0)", "NVL(price, 0)"],
+    ["GREATEST(a, b, c)", "GREATEST(a, b, c)"],
+    ["SQRT(amount)", "SQRT(amount)"],
+    ["MD5(name)", "MD5(name)"],
+    ["CONCAT_WS(',', a, b)", "CONCAT_WS(',', a, b)"],
+
+    // complex
+    [
+      "CASE WHEN COUNT_IF(is_dau) > 0 THEN 'active' ELSE 'inactive' END",
+      "CASE WHEN COUNT_IF(is_dau) > 0 THEN 'active' ELSE 'inactive' END",
+    ],
   ];
 
   for (const [input, expected] of cases) {

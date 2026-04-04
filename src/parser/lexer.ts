@@ -216,6 +216,7 @@ export function tokenize(input: string): LexResult {
     if (ch === "'") {
       advance(); // opening '
       let str = "";
+      let terminated = false;
       while (pos < input.length) {
         if (peek() === "'") {
           advance();
@@ -223,11 +224,15 @@ export function tokenize(input: string): LexResult {
             str += "'";
             advance();
           } else {
+            terminated = true;
             break;
           }
         } else {
           str += advance();
         }
+      }
+      if (!terminated) {
+        errors.push({ line: startLine, col: startCol, message: "Unterminated string literal" });
       }
       emit("STRING", str, startLine, startCol);
       continue;
@@ -268,7 +273,11 @@ export function tokenize(input: string): LexResult {
       while (pos < input.length && peek() !== '"') {
         ident += advance();
       }
-      if (pos < input.length) advance(); // closing "
+      if (pos < input.length) {
+        advance(); // closing "
+      } else {
+        errors.push({ line: startLine, col: startCol, message: "Unterminated quoted identifier" });
+      }
       emit("IDENT", ident, startLine, startCol);
       continue;
     }

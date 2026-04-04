@@ -1,4 +1,4 @@
-name: Publish @eloquio/lattik-expr
+name: Publish @eloquio/lattik-expression
 
 on:
   push:

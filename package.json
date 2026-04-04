@@ -1,5 +1,5 @@
 {
-  "name": "@eloquio/lattik-expr",
+  "name": "@eloquio/lattik-expression",
   "packageManager": "pnpm@10.33.0",
   "version": "0.1.0",
   "type": "module",

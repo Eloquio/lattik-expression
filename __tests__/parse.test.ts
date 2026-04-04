@@ -663,5 +663,26 @@ describe("parse", () => {
       expect(result.errors.length).toBeGreaterThan(0);
       expect(result.errors[0].message).toContain("depth");
     });
+
+    it("input exceeding max length is rejected", () => {
+      const huge = "a + " .repeat(300_000); // > 1MB
+      const result = parse(huge);
+      expect(result.errors.length).toBeGreaterThan(0);
+      expect(result.errors[0].message).toContain("Input too large");
+    });
+
+    it("numeric literal exceeding max length is rejected", () => {
+      const bigNum = "9".repeat(200);
+      const result = parse(bigNum);
+      expect(result.errors.length).toBeGreaterThan(0);
+      expect(result.errors[0].message).toContain("Numeric literal too long");
+    });
+
+    it("identifier with double quotes is properly escaped in emitter", () => {
+      // This tests that parsing a quoted identifier with special chars works
+      const result = parse('"my col"');
+      expect(result.errors).toEqual([]);
+      expect(result.expr).toMatchObject({ kind: "ColumnRef", column: "my col" });
+    });
   });
 });

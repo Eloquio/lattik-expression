@@ -110,6 +110,8 @@ const TYPE_TOKEN_MAP: Partial<Record<TokenKind, ScalarTypeKind>> = {
 // ---------------------------------------------------------------------------
 
 const MAX_DEPTH = 128;
+const MAX_LIST_LENGTH = 10_000;
+const MAX_WHEN_CLAUSES = 1_000;
 
 class Parser {
   pos = 0;
@@ -627,6 +629,10 @@ class Parser {
 
     const whens: { condition: Expr; result: Expr }[] = [];
     while (this.match("WHEN")) {
+      if (whens.length >= MAX_WHEN_CLAUSES) {
+        this.error(`Too many WHEN clauses (max ${MAX_WHEN_CLAUSES})`);
+        break;
+      }
       const condition = this.parseExpr();
       this.expect("THEN");
       const result = this.parseExpr();
@@ -684,6 +690,10 @@ class Parser {
     const exprs: Expr[] = [];
     exprs.push(this.parseExpr());
     while (this.match("COMMA")) {
+      if (exprs.length >= MAX_LIST_LENGTH) {
+        this.error(`List too long (max ${MAX_LIST_LENGTH} items)`);
+        break;
+      }
       exprs.push(this.parseExpr());
     }
     return exprs;

@@ -57,3 +57,6 @@ export type { SchemaContext, ColumnInfo, FunctionSignature } from "./checker/sch
 // SQL emitter
 export { emitSql } from "./emitter/emit-sql.js";
 export type { EmitOptions } from "./emitter/emit-sql.js";
+
+// Limits
+export { MAX_INPUT_LENGTH } from "./parser/lexer.js";

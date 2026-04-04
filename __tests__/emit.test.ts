@@ -333,4 +333,20 @@ describe("emitSql", () => {
     };
     expect(emitSql(e)).toBe('t."order"');
   });
+
+  it("escapes double quotes inside identifiers", () => {
+    const e: Expr = {
+      kind: "ColumnRef",
+      column: 'my"col',
+    };
+    expect(emitSql(e)).toBe('"my""col"');
+  });
+
+  it("escapes identifier with space and quotes", () => {
+    const e: Expr = {
+      kind: "ColumnRef",
+      column: 'a "b" c',
+    };
+    expect(emitSql(e)).toBe('"a ""b"" c"');
+  });
 });

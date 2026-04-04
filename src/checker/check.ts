@@ -339,14 +339,30 @@ class TypeChecker {
   errors: CheckError[] = [];
 
   private columns: ColumnInfo[];
+  private columnIndex: Map<string, ColumnInfo[]>;
   private functions: Map<string, FunctionSignature>;
 
   constructor(schema: SchemaContext) {
     this.columns = schema.columns;
-    this.functions = new Map([
-      ...BUILT_IN_FUNCTIONS,
-      ...(schema.functions ?? new Map()),
-    ]);
+
+    // Build column index for O(1) lookup by name
+    this.columnIndex = new Map();
+    for (const col of schema.columns) {
+      const key = col.name.toLowerCase();
+      const existing = this.columnIndex.get(key);
+      if (existing) {
+        existing.push(col);
+      } else {
+        this.columnIndex.set(key, [col]);
+      }
+    }
+
+    // Reuse BUILT_IN_FUNCTIONS if no custom functions; avoid copying 140+ entries
+    if (schema.functions && schema.functions.size > 0) {
+      this.functions = new Map([...BUILT_IN_FUNCTIONS, ...schema.functions]);
+    } else {
+      this.functions = BUILT_IN_FUNCTIONS;
+    }
   }
 
   infer(expr: Expr): Expr {
@@ -412,10 +428,13 @@ class TypeChecker {
     table: string | undefined,
     column: string
   ): ColumnInfo | null {
-    const matches = this.columns.filter((c) => {
-      if (table && c.table && c.table !== table) return false;
-      return c.name === column;
-    });
+    const candidates = this.columnIndex.get(column.toLowerCase());
+    if (!candidates || candidates.length === 0) return null;
+
+    const matches = table
+      ? candidates.filter((c) => !c.table || c.table === table)
+      : candidates;
+
     if (matches.length === 0) return null;
     if (matches.length > 1 && !table) {
       this.errors.push({

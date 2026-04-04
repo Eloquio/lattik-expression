@@ -147,7 +147,23 @@ export interface LexResult {
   errors: LexError[];
 }
 
+/** Maximum input length accepted by the tokenizer (1MB). */
+export const MAX_INPUT_LENGTH = 1_048_576;
+
+/** Maximum length for a single numeric literal. */
+const MAX_LITERAL_LENGTH = 100;
+
+/** Maximum length for a single string literal or identifier. */
+const MAX_STRING_LENGTH = 65_536;
+
 export function tokenize(input: string): LexResult {
+  if (input.length > MAX_INPUT_LENGTH) {
+    return {
+      tokens: [{ kind: "EOF", text: "", line: 1, col: 1 }],
+      errors: [{ line: 1, col: 1, message: `Input too large (${input.length} chars, max ${MAX_INPUT_LENGTH})` }],
+    };
+  }
+
   const tokens: Token[] = [];
   const errors: LexError[] = [];
   let pos = 0;
@@ -205,8 +221,14 @@ export function tokenize(input: string): LexResult {
         while (pos < input.length && peek() >= "0" && peek() <= "9") {
           num += advance();
         }
+        if (num.length > MAX_LITERAL_LENGTH) {
+          errors.push({ line: startLine, col: startCol, message: `Numeric literal too long (${num.length} chars, max ${MAX_LITERAL_LENGTH})` });
+        }
         emit("DECIMAL", num, startLine, startCol);
       } else {
+        if (num.length > MAX_LITERAL_LENGTH) {
+          errors.push({ line: startLine, col: startCol, message: `Numeric literal too long (${num.length} chars, max ${MAX_LITERAL_LENGTH})` });
+        }
         emit("INTEGER", num, startLine, startCol);
       }
       continue;
@@ -217,6 +239,7 @@ export function tokenize(input: string): LexResult {
       advance(); // opening '
       let str = "";
       let terminated = false;
+      let truncated = false;
       while (pos < input.length) {
         if (peek() === "'") {
           advance();
@@ -228,11 +251,19 @@ export function tokenize(input: string): LexResult {
             break;
           }
         } else {
-          str += advance();
+          if (str.length < MAX_STRING_LENGTH) {
+            str += advance();
+          } else {
+            advance(); // consume but don't append
+            truncated = true;
+          }
         }
       }
       if (!terminated) {
         errors.push({ line: startLine, col: startCol, message: "Unterminated string literal" });
+      }
+      if (truncated) {
+        errors.push({ line: startLine, col: startCol, message: `String literal too long (max ${MAX_STRING_LENGTH} chars)` });
       }
       emit("STRING", str, startLine, startCol);
       continue;
@@ -270,13 +301,22 @@ export function tokenize(input: string): LexResult {
     if (ch === '"') {
       advance(); // opening "
       let ident = "";
+      let truncated = false;
       while (pos < input.length && peek() !== '"') {
-        ident += advance();
+        if (ident.length < MAX_STRING_LENGTH) {
+          ident += advance();
+        } else {
+          advance();
+          truncated = true;
+        }
       }
       if (pos < input.length) {
         advance(); // closing "
       } else {
         errors.push({ line: startLine, col: startCol, message: "Unterminated quoted identifier" });
+      }
+      if (truncated) {
+        errors.push({ line: startLine, col: startCol, message: `Quoted identifier too long (max ${MAX_STRING_LENGTH} chars)` });
       }
       emit("IDENT", ident, startLine, startCol);
       continue;

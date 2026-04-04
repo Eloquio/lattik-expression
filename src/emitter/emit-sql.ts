@@ -193,6 +193,7 @@ class SqlEmitter {
     if (/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name) && !SQL_KEYWORDS.has(name.toUpperCase())) {
       return name;
     }
-    return `"${name}"`;
+    // Escape double quotes inside identifiers by doubling them (SQL standard)
+    return `"${name.replace(/"/g, '""')}"`;
   }
 }

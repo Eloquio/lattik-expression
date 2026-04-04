@@ -200,4 +200,4 @@ Generic AST traversal and transformation utilities.
 
 ## License
 
-MIT
+Apache License 2.0

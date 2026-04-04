@@ -1,5 +1,6 @@
 {
   "name": "@eloquio/lattik-expr",
+  "packageManager": "pnpm@10.33.0",
   "version": "0.1.0",
   "type": "module",
   "main": "dist/index.js",

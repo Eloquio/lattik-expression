@@ -48,15 +48,19 @@ function aggregateReturnType(
 ): DataType {
   switch (name) {
     case "COUNT":
+    case "COUNT_IF":
+    case "APPROX_COUNT_DISTINCT":
       return dataType("int64", false);
     case "SUM":
       if (argType && isNumeric(argType.scalar)) {
-        // SUM promotes ints to int64
         const s = argType.scalar === "int32" ? "int64" : argType.scalar;
         return dataType(s, argType.nullable);
       }
       return dataType("double", true);
+    case "SUM_IF":
+      return dataType("double", true);
     case "AVG":
+    case "AVG_IF":
       return dataType("double", true);
     case "MIN":
     case "MAX":
@@ -70,6 +74,9 @@ function aggregateReturnType(
     case "STDDEV":
     case "VARIANCE":
       return dataType("double", true);
+    case "PERCENTILE":
+    case "PERCENTILE_APPROX":
+      return dataType("double", true);
     default:
       return dataType("unknown", true);
   }
@@ -79,155 +86,248 @@ function aggregateReturnType(
 // Built-in scalar functions
 // ---------------------------------------------------------------------------
 
+// Helper to define simple functions concisely
+function fn(
+  name: string,
+  minArgs: number,
+  maxArgs: number,
+  resolve: (args: DataType[]) => DataType
+): [string, FunctionSignature] {
+  return [name, { name, minArgs, maxArgs, resolve }];
+}
+
+const passthrough = (args: DataType[]) => args[0] ?? dataType("unknown", false);
+const returnsString = (args: DataType[]) => dataType("string", args[0]?.nullable ?? false);
+const returnsInt = () => dataType("int32", false);
+const returnsLong = () => dataType("int64", false);
+const returnsDouble = (args: DataType[]) => dataType("double", args[0]?.nullable ?? false);
+const returnsDoubleLit = () => dataType("double", false);
+const returnsBool = () => dataType("boolean", false);
+const returnsDate = () => dataType("date", false);
+const returnsTimestamp = () => dataType("timestamp", false);
+const returnsJson = () => dataType("json", false);
+
 const BUILT_IN_FUNCTIONS: Map<string, FunctionSignature> = new Map([
-  [
-    "COALESCE",
-    {
-      name: "COALESCE",
-      minArgs: 1,
-      maxArgs: Infinity,
-      resolve: (args) => {
-        let result: ScalarTypeKind = "null";
-        for (const a of args) {
-          const c = commonType(result, a.scalar);
-          if (c) result = c;
-        }
-        return dataType(result, false);
-      },
-    },
-  ],
-  [
-    "NULLIF",
-    {
-      name: "NULLIF",
-      minArgs: 2,
-      maxArgs: 2,
-      resolve: (args) => dataType(args[0]?.scalar ?? "unknown", true),
-    },
-  ],
-  [
-    "ABS",
-    {
-      name: "ABS",
-      minArgs: 1,
-      maxArgs: 1,
-      resolve: (args) => args[0] ?? dataType("unknown", false),
-    },
-  ],
-  [
-    "CEIL",
-    {
-      name: "CEIL",
-      minArgs: 1,
-      maxArgs: 1,
-      resolve: (args) => dataType(args[0]?.scalar ?? "int64", args[0]?.nullable ?? false),
-    },
-  ],
-  [
-    "FLOOR",
-    {
-      name: "FLOOR",
-      minArgs: 1,
-      maxArgs: 1,
-      resolve: (args) => dataType(args[0]?.scalar ?? "int64", args[0]?.nullable ?? false),
-    },
-  ],
-  [
-    "ROUND",
-    {
-      name: "ROUND",
-      minArgs: 1,
-      maxArgs: 2,
-      resolve: (args) => dataType(args[0]?.scalar ?? "double", args[0]?.nullable ?? false),
-    },
-  ],
-  [
-    "LENGTH",
-    {
-      name: "LENGTH",
-      minArgs: 1,
-      maxArgs: 1,
-      resolve: () => dataType("int32", false),
-    },
-  ],
-  [
-    "LOWER",
-    {
-      name: "LOWER",
-      minArgs: 1,
-      maxArgs: 1,
-      resolve: (args) => dataType("string", args[0]?.nullable ?? false),
-    },
-  ],
-  [
-    "UPPER",
-    {
-      name: "UPPER",
-      minArgs: 1,
-      maxArgs: 1,
-      resolve: (args) => dataType("string", args[0]?.nullable ?? false),
-    },
-  ],
-  [
-    "TRIM",
-    {
-      name: "TRIM",
-      minArgs: 1,
-      maxArgs: 1,
-      resolve: (args) => dataType("string", args[0]?.nullable ?? false),
-    },
-  ],
-  [
-    "SUBSTRING",
-    {
-      name: "SUBSTRING",
-      minArgs: 2,
-      maxArgs: 3,
-      resolve: (args) => dataType("string", args[0]?.nullable ?? false),
-    },
-  ],
-  [
-    "CONCAT",
-    {
-      name: "CONCAT",
-      minArgs: 1,
-      maxArgs: Infinity,
-      resolve: () => dataType("string", false),
-    },
-  ],
-  [
-    "NOW",
-    {
-      name: "NOW",
-      minArgs: 0,
-      maxArgs: 0,
-      resolve: () => dataType("timestamp", false),
-    },
-  ],
-  [
-    "CURRENT_DATE",
-    {
-      name: "CURRENT_DATE",
-      minArgs: 0,
-      maxArgs: 0,
-      resolve: () => dataType("date", false),
-    },
-  ],
-  [
-    "IF",
-    {
-      name: "IF",
-      minArgs: 3,
-      maxArgs: 3,
-      resolve: (args) => {
-        const t = commonType(
-          args[1]?.scalar ?? "unknown",
-          args[2]?.scalar ?? "unknown"
-        );
-        return dataType(t ?? "unknown", true);
-      },
-    },
-  ],
+  // --- Null handling ---
+  fn("COALESCE", 1, Infinity, (args) => {
+    let result: ScalarTypeKind = "null";
+    for (const a of args) {
+      const c = commonType(result, a.scalar);
+      if (c) result = c;
+    }
+    return dataType(result, false);
+  }),
+  fn("NULLIF", 2, 2, (args) => dataType(args[0]?.scalar ?? "unknown", true)),
+  fn("NVL", 2, 2, (args) => {
+    const t = commonType(args[0]?.scalar ?? "unknown", args[1]?.scalar ?? "unknown");
+    return dataType(t ?? "unknown", false);
+  }),
+  fn("NVL2", 3, 3, (args) => {
+    const t = commonType(args[1]?.scalar ?? "unknown", args[2]?.scalar ?? "unknown");
+    return dataType(t ?? "unknown", true);
+  }),
+  fn("IFNULL", 2, 2, (args) => {
+    const t = commonType(args[0]?.scalar ?? "unknown", args[1]?.scalar ?? "unknown");
+    return dataType(t ?? "unknown", false);
+  }),
+  fn("NANVL", 2, 2, (args) => args[0] ?? dataType("double", false)),
+  fn("IF", 3, 3, (args) => {
+    const t = commonType(args[1]?.scalar ?? "unknown", args[2]?.scalar ?? "unknown");
+    return dataType(t ?? "unknown", true);
+  }),
+
+  // --- Math ---
+  fn("ABS", 1, 1, passthrough),
+  fn("CEIL", 1, 1, (args) => dataType(args[0]?.scalar ?? "int64", args[0]?.nullable ?? false)),
+  fn("CEILING", 1, 1, (args) => dataType(args[0]?.scalar ?? "int64", args[0]?.nullable ?? false)),
+  fn("FLOOR", 1, 1, (args) => dataType(args[0]?.scalar ?? "int64", args[0]?.nullable ?? false)),
+  fn("ROUND", 1, 2, (args) => dataType(args[0]?.scalar ?? "double", args[0]?.nullable ?? false)),
+  fn("BROUND", 1, 2, (args) => dataType(args[0]?.scalar ?? "double", args[0]?.nullable ?? false)),
+  fn("POW", 2, 2, returnsDoubleLit),
+  fn("POWER", 2, 2, returnsDoubleLit),
+  fn("SQRT", 1, 1, returnsDouble),
+  fn("CBRT", 1, 1, returnsDouble),
+  fn("LOG", 1, 2, returnsDouble),
+  fn("LOG2", 1, 1, returnsDouble),
+  fn("LOG10", 1, 1, returnsDouble),
+  fn("LN", 1, 1, returnsDouble),
+  fn("EXP", 1, 1, returnsDouble),
+  fn("SIGN", 1, 1, returnsDouble),
+  fn("SIGNUM", 1, 1, returnsDouble),
+  fn("MOD", 2, 2, passthrough),
+  fn("PMOD", 2, 2, passthrough),
+  fn("GREATEST", 2, Infinity, (args) => {
+    let result: ScalarTypeKind = args[0]?.scalar ?? "unknown";
+    for (const a of args.slice(1)) {
+      const c = commonType(result, a.scalar);
+      if (c) result = c;
+    }
+    return dataType(result, false);
+  }),
+  fn("LEAST", 2, Infinity, (args) => {
+    let result: ScalarTypeKind = args[0]?.scalar ?? "unknown";
+    for (const a of args.slice(1)) {
+      const c = commonType(result, a.scalar);
+      if (c) result = c;
+    }
+    return dataType(result, false);
+  }),
+  fn("RAND", 0, 1, returnsDoubleLit),
+  fn("RANDN", 0, 1, returnsDoubleLit),
+  fn("POSITIVE", 1, 1, passthrough),
+  fn("NEGATIVE", 1, 1, passthrough),
+  fn("DEGREES", 1, 1, returnsDouble),
+  fn("RADIANS", 1, 1, returnsDouble),
+  fn("SIN", 1, 1, returnsDouble),
+  fn("COS", 1, 1, returnsDouble),
+  fn("TAN", 1, 1, returnsDouble),
+  fn("ASIN", 1, 1, returnsDouble),
+  fn("ACOS", 1, 1, returnsDouble),
+  fn("ATAN", 1, 1, returnsDouble),
+  fn("ATAN2", 2, 2, returnsDoubleLit),
+  fn("BIN", 1, 1, () => dataType("string", false)),
+  fn("HEX", 1, 1, () => dataType("string", false)),
+  fn("UNHEX", 1, 1, () => dataType("string", true)),
+  fn("CONV", 3, 3, () => dataType("string", true)),
+
+  // --- String ---
+  fn("LENGTH", 1, 1, returnsInt),
+  fn("CHAR_LENGTH", 1, 1, returnsInt),
+  fn("CHARACTER_LENGTH", 1, 1, returnsInt),
+  fn("BIT_LENGTH", 1, 1, returnsInt),
+  fn("OCTET_LENGTH", 1, 1, returnsInt),
+  fn("LOWER", 1, 1, returnsString),
+  fn("LCASE", 1, 1, returnsString),
+  fn("UPPER", 1, 1, returnsString),
+  fn("UCASE", 1, 1, returnsString),
+  fn("TRIM", 1, 3, returnsString),
+  fn("LTRIM", 1, 2, returnsString),
+  fn("RTRIM", 1, 2, returnsString),
+  fn("LPAD", 2, 3, returnsString),
+  fn("RPAD", 2, 3, returnsString),
+  fn("REVERSE", 1, 1, returnsString),
+  fn("INITCAP", 1, 1, returnsString),
+  fn("TRANSLATE", 3, 3, returnsString),
+  fn("REPLACE", 2, 3, returnsString),
+  fn("REGEXP_REPLACE", 2, 3, returnsString),
+  fn("REGEXP_EXTRACT", 2, 3, returnsString),
+  fn("SPLIT", 2, 3, returnsJson),
+  fn("CONCAT", 1, Infinity, () => dataType("string", false)),
+  fn("CONCAT_WS", 2, Infinity, () => dataType("string", false)),
+  fn("SUBSTRING", 2, 3, returnsString),
+  fn("SUBSTR", 2, 3, returnsString),
+  fn("LEFT", 2, 2, returnsString),
+  fn("RIGHT", 2, 2, returnsString),
+  fn("LOCATE", 2, 3, returnsInt),
+  fn("INSTR", 2, 2, returnsInt),
+  fn("FORMAT_NUMBER", 2, 2, () => dataType("string", false)),
+  fn("REPEAT", 2, 2, returnsString),
+  fn("OVERLAY", 3, 4, returnsString),
+  fn("ENCODE", 2, 2, () => dataType("string", false)),
+  fn("DECODE", 2, 2, () => dataType("string", false)),
+  fn("ASCII", 1, 1, returnsInt),
+  fn("CHR", 1, 1, () => dataType("string", false)),
+  fn("BASE64", 1, 1, () => dataType("string", false)),
+  fn("UNBASE64", 1, 1, () => dataType("string", false)),
+  fn("SOUNDEX", 1, 1, () => dataType("string", false)),
+  fn("LEVENSHTEIN", 2, 2, returnsInt),
+
+  // --- Date/time ---
+  fn("NOW", 0, 0, returnsTimestamp),
+  fn("CURRENT_DATE", 0, 0, returnsDate),
+  fn("CURRENT_TIMESTAMP", 0, 0, returnsTimestamp),
+  fn("DATE_ADD", 2, 2, returnsDate),
+  fn("DATE_SUB", 2, 2, returnsDate),
+  fn("DATEDIFF", 2, 2, returnsInt),
+  fn("MONTHS_BETWEEN", 2, 3, returnsDoubleLit),
+  fn("ADD_MONTHS", 2, 2, returnsDate),
+  fn("DATE_FORMAT", 2, 2, () => dataType("string", false)),
+  fn("TO_DATE", 1, 2, () => dataType("date", true)),
+  fn("TO_TIMESTAMP", 1, 2, () => dataType("timestamp", true)),
+  fn("FROM_UNIXTIME", 1, 2, () => dataType("string", false)),
+  fn("UNIX_TIMESTAMP", 0, 2, returnsLong),
+  fn("YEAR", 1, 1, returnsInt),
+  fn("MONTH", 1, 1, returnsInt),
+  fn("DAY", 1, 1, returnsInt),
+  fn("DAYOFMONTH", 1, 1, returnsInt),
+  fn("HOUR", 1, 1, returnsInt),
+  fn("MINUTE", 1, 1, returnsInt),
+  fn("SECOND", 1, 1, returnsInt),
+  fn("DAYOFWEEK", 1, 1, returnsInt),
+  fn("DAYOFYEAR", 1, 1, returnsInt),
+  fn("WEEKOFYEAR", 1, 1, returnsInt),
+  fn("QUARTER", 1, 1, returnsInt),
+  fn("LAST_DAY", 1, 1, returnsDate),
+  fn("NEXT_DAY", 2, 2, returnsDate),
+  fn("DATE_TRUNC", 2, 2, returnsTimestamp),
+  fn("TRUNC", 1, 2, returnsDate),
+  fn("MAKE_DATE", 3, 3, returnsDate),
+  fn("MAKE_TIMESTAMP", 6, 7, returnsTimestamp),
+
+  // --- Window functions ---
+  fn("ROW_NUMBER", 0, 0, returnsLong),
+  fn("RANK", 0, 0, returnsInt),
+  fn("DENSE_RANK", 0, 0, returnsInt),
+  fn("NTILE", 1, 1, returnsInt),
+  fn("LAG", 1, 3, passthrough),
+  fn("LEAD", 1, 3, passthrough),
+  fn("FIRST_VALUE", 1, 2, passthrough),
+  fn("LAST_VALUE", 1, 2, passthrough),
+  fn("NTH_VALUE", 2, 2, passthrough),
+  fn("CUME_DIST", 0, 0, returnsDoubleLit),
+  fn("PERCENT_RANK", 0, 0, returnsDoubleLit),
+
+  // --- Hash / crypto ---
+  fn("HASH", 1, Infinity, returnsInt),
+  fn("XXHASH64", 1, Infinity, returnsLong),
+  fn("MD5", 1, 1, () => dataType("string", false)),
+  fn("SHA1", 1, 1, () => dataType("string", false)),
+  fn("SHA", 1, 1, () => dataType("string", false)),
+  fn("SHA2", 2, 2, () => dataType("string", false)),
+  fn("CRC32", 1, 1, returnsLong),
+
+  // --- Array / complex ---
+  fn("SIZE", 1, 1, returnsInt),
+  fn("ARRAY_CONTAINS", 2, 2, returnsBool),
+  fn("ARRAY_DISTINCT", 1, 1, returnsJson),
+  fn("ARRAY_UNION", 2, 2, returnsJson),
+  fn("ARRAY_INTERSECT", 2, 2, returnsJson),
+  fn("ARRAY_EXCEPT", 2, 2, returnsJson),
+  fn("ARRAY_JOIN", 2, 3, () => dataType("string", false)),
+  fn("ARRAY_POSITION", 2, 2, returnsLong),
+  fn("ARRAY_SORT", 1, 1, returnsJson),
+  fn("FLATTEN", 1, 1, returnsJson),
+  fn("SEQUENCE", 2, 3, returnsJson),
+  fn("SORT_ARRAY", 1, 2, returnsJson),
+  fn("SLICE", 3, 3, returnsJson),
+  fn("ELEMENT_AT", 2, 2, (args) => args[0] ?? dataType("unknown", true)),
+  fn("EXPLODE", 1, 1, (args) => args[0] ?? dataType("unknown", false)),
+  fn("POSEXPLODE", 1, 1, (args) => args[0] ?? dataType("unknown", false)),
+  fn("INLINE", 1, 1, (args) => args[0] ?? dataType("unknown", false)),
+
+  // --- Map ---
+  fn("MAP_KEYS", 1, 1, returnsJson),
+  fn("MAP_VALUES", 1, 1, returnsJson),
+  fn("MAP_FROM_ARRAYS", 2, 2, returnsJson),
+  fn("MAP_CONCAT", 1, Infinity, returnsJson),
+  fn("STR_TO_MAP", 1, 3, returnsJson),
+
+  // --- JSON ---
+  fn("GET_JSON_OBJECT", 2, 2, () => dataType("string", true)),
+  fn("JSON_TUPLE", 2, Infinity, () => dataType("string", true)),
+  fn("FROM_JSON", 2, 3, returnsJson),
+  fn("TO_JSON", 1, 2, () => dataType("string", false)),
+  fn("SCHEMA_OF_JSON", 1, 1, () => dataType("string", false)),
+
+  // --- Type conversion ---
+  fn("INT", 1, 1, () => dataType("int32", true)),
+  fn("BIGINT", 1, 1, () => dataType("int64", true)),
+  fn("FLOAT", 1, 1, () => dataType("float", true)),
+  fn("DOUBLE", 1, 1, () => dataType("double", true)),
+  fn("STRING", 1, 1, () => dataType("string", false)),
+  fn("BOOLEAN", 1, 1, () => dataType("boolean", true)),
+  fn("DATE", 1, 1, () => dataType("date", true)),
+  fn("TIMESTAMP", 1, 1, () => dataType("timestamp", true)),
 ]);
 
 // ---------------------------------------------------------------------------

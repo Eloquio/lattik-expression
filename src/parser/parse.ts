@@ -79,6 +79,14 @@ const KNOWN_AGGREGATES = new Set([
   "ANY_VALUE",
   "STDDEV",
   "VARIANCE",
+  // Conditional aggregates
+  "COUNT_IF",
+  "SUM_IF",
+  "AVG_IF",
+  // Spark percentile/approx
+  "PERCENTILE",
+  "PERCENTILE_APPROX",
+  "APPROX_COUNT_DISTINCT",
 ]);
 
 // ---------------------------------------------------------------------------

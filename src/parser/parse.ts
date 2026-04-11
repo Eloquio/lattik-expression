@@ -65,7 +65,8 @@ export function parse(input: string): ParseResult {
 // Known aggregates
 // ---------------------------------------------------------------------------
 
-const KNOWN_AGGREGATES = new Set([
+/** Names recognised by the parser as aggregate functions (→ AggregateCall). */
+export const KNOWN_AGGREGATES: ReadonlySet<string> = new Set([
   "SUM",
   "COUNT",
   "AVG",

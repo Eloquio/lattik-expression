@@ -46,11 +46,11 @@ export {
 export { walkExpr, mapExpr } from "./ast/visitor.js";
 
 // Parser
-export { parse } from "./parser/parse.js";
+export { parse, KNOWN_AGGREGATES } from "./parser/parse.js";
 export type { ParseResult, ParseError } from "./parser/parse.js";
 
 // Type checker
-export { check } from "./checker/check.js";
+export { check, listFunctions } from "./checker/check.js";
 export type { CheckResult, CheckError } from "./checker/check.js";
 export type { SchemaContext, ColumnInfo, FunctionSignature } from "./checker/schema.js";
 

@@ -331,6 +331,11 @@ const BUILT_IN_FUNCTIONS: Map<string, FunctionSignature> = new Map([
   fn("TIMESTAMP", 1, 1, () => dataType("timestamp", true)),
 ]);
 
+/** All built-in scalar function names (upper-case), sorted. */
+export function listFunctions(): string[] {
+  return Array.from(BUILT_IN_FUNCTIONS.keys()).sort();
+}
+
 // ---------------------------------------------------------------------------
 // Type checker
 // ---------------------------------------------------------------------------

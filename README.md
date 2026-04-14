@@ -1,6 +1,8 @@
-# @eloquio/lattik-expression
+# [@eloquio/lattik-expression](https://github.com/Eloquio/lattik-expression)
 
 A TypeScript library for parsing, type-checking, and emitting SQL expressions. Built for data pipeline tools that need to validate user-written expressions against a known schema before execution.
+
+Part of the [Lattik](https://github.com/Eloquio/lattik) open-source data platform by [Eloquio](https://github.com/Eloquio).
 
 ## Install
 
@@ -198,6 +200,12 @@ Create a `DataType` object. Used when defining schema columns and custom functio
 
 Generic AST traversal and transformation utilities.
 
+## Related
+
+- [lattik](https://github.com/Eloquio/lattik) -- monorepo orchestrator
+- [lattik-stitch](https://github.com/Eloquio/lattik-stitch) -- columnar stitch engine (Rust + Spark + Trino)
+- [lattik-studio](https://github.com/Eloquio/lattik-studio) -- agentic analytics platform (Next.js + AI SDK)
+
 ## License
 
-Apache License 2.0
+[Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0)
